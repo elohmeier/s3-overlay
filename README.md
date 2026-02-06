@@ -27,6 +27,24 @@ dependencies = [
 ]
 ```
 
+## Docker
+
+```bash
+docker run -p 8000:8000 ghcr.io/elohmeier/s3-overlay:latest
+```
+
+Pass configuration via environment variables (`-e`), for example:
+
+```bash
+docker run -p 8000:8000 \
+  -e S3_OVERLAY_REMOTE_ENDPOINT=https://s3.eu-central-1.amazonaws.com \
+  -e S3_OVERLAY_REMOTE_REGION=eu-central-1 \
+  -e S3_OVERLAY_REMOTE_ACCESS_KEY_ID=AKIA... \
+  -e S3_OVERLAY_REMOTE_SECRET_ACCESS_KEY=secret... \
+  -e S3_OVERLAY_BUCKET_MAPPING=local-bucket:remote-bucket \
+  ghcr.io/elohmeier/s3-overlay:latest
+```
+
 ## Usage
 
 ### Running the Proxy
