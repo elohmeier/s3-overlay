@@ -13,6 +13,9 @@ dependencies = [
   "pydantic-settings>=2.2.0",
 ]
 
+[project.optional-dependencies]
+build = ["uv ~= 0.10.0"]
+
 [dependency-groups]
 dev = [
   "pytest>=9.0.2",
@@ -34,6 +37,7 @@ testpaths = ["tests"]
 
 [tool.semantic_release]
 build_command = """
+    python -m pip install -e '.[build]'
     uv lock --upgrade-package "$PACKAGE_NAME"
     git add uv.lock
     uv build
