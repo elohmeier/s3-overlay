@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.3 (2026-02-06)
+
+### Bug Fixes
+
+- Configure PSR to stamp version in pyproject.toml
+  ([`dfa85d7`](https://github.com/elohmeier/s3-overlay/commit/dfa85d73d071e026b283acae48c37607a04c57f5))
+
+
 ## v1.0.2 (2026-02-06)
 
 ### Bug Fixes
