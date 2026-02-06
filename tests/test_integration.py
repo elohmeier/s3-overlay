@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 from email.utils import parsedate_to_datetime
-from typing import AsyncGenerator, AsyncIterator, cast
+from typing import AsyncGenerator, AsyncIterator, Callable, cast
 
 import pytest
 from litestar import Request
@@ -77,8 +77,10 @@ class TestProxyIntegration:
 
         # Read response body
         body_chunks = []
-        if hasattr(response, "iterator") and callable(response.iterator):
-            iterator = cast(AsyncIterator[bytes], response.iterator())
+        iterator_attr = getattr(response, "iterator", None)
+        if callable(iterator_attr):
+            iterator_func = cast(Callable[[], AsyncIterator[bytes]], iterator_attr)
+            iterator = iterator_func()
             async for chunk in iterator:
                 body_chunks.append(chunk)
         elif hasattr(response, "body"):
@@ -220,8 +222,10 @@ class TestProxyIntegration:
 
         # Read response body
         body_chunks = []
-        if hasattr(response, "iterator") and callable(response.iterator):
-            iterator = cast(AsyncIterator[bytes], response.iterator())
+        iterator_attr = getattr(response, "iterator", None)
+        if callable(iterator_attr):
+            iterator_func = cast(Callable[[], AsyncIterator[bytes]], iterator_attr)
+            iterator = iterator_func()
             async for chunk in iterator:
                 body_chunks.append(chunk)
         elif hasattr(response, "body"):
@@ -343,8 +347,10 @@ class TestProxyIntegration:
 
             # Read response body
             body_chunks = []
-            if hasattr(response, "iterator") and callable(response.iterator):
-                iterator = cast(AsyncIterator[bytes], response.iterator())
+            iterator_attr = getattr(response, "iterator", None)
+            if callable(iterator_attr):
+                iterator_func = cast(Callable[[], AsyncIterator[bytes]], iterator_attr)
+                iterator = iterator_func()
                 async for chunk in iterator:
                     body_chunks.append(chunk)
             elif hasattr(response, "body"):

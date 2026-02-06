@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
     from litestar import Request
 else:  # pragma: no cover
-    AsyncIterator = Iterable = Mapping = Any  # type: ignore[assignment]
+    AsyncIterator = Iterable = Mapping = Any
 
 LOG = logging.getLogger("s3_overlay.proxy")
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
-from typing import TYPE_CHECKING, AsyncGenerator, AsyncIterator, cast
+from typing import TYPE_CHECKING, AsyncGenerator, AsyncIterator, Callable, cast
 
 import pytest
 from litestar import Request
@@ -91,8 +91,10 @@ class TestChunking:
 
         # Read response body
         body_chunks = []
-        if hasattr(response, "iterator") and callable(response.iterator):
-            iterator = cast(AsyncIterator[bytes], response.iterator())
+        iterator_attr = getattr(response, "iterator", None)
+        if callable(iterator_attr):
+            iterator_func = cast(Callable[[], AsyncIterator[bytes]], iterator_attr)
+            iterator = iterator_func()
             async for chunk in iterator:
                 body_chunks.append(chunk)
         body = b"".join(body_chunks)
