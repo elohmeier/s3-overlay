@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.2 (2026-02-06)
+
+### Bug Fixes
+
+- Use correct pypi publish action ref
+  ([`cf3eb96`](https://github.com/elohmeier/s3-overlay/commit/cf3eb96475ca8e3b1ca177ac0333cc3cd5200cac))
+
+
 ## v1.0.1 (2026-02-06)
 
 ### Bug Fixes
