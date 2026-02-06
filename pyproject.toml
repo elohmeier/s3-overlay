@@ -36,6 +36,7 @@ module-root = ""
 testpaths = ["tests"]
 
 [tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
 build_command = """
     python -m pip install -e '.[build]'
     uv lock --upgrade-package "$PACKAGE_NAME"
