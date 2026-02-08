@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.0.4 (2026-02-08)
+
+### Bug Fixes
+
+- Improve remote error handling / logging
+  ([`213c8e2`](https://github.com/elohmeier/s3-overlay/commit/213c8e20ca299247a37f2502871050c8da5de2cf))
+
+### Documentation
+
+- Add Docker usage section to README
+  ([`d892dda`](https://github.com/elohmeier/s3-overlay/commit/d892dda2372a45f9721418954034f3b2d96fe42d))
+
+
 ## v1.0.3 (2026-02-06)
 
 ### Bug Fixes

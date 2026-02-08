@@ -1,6 +1,6 @@
 [project]
 name = "s3-overlay"
-version = "1.0.3"
+version = "1.0.4"
 description = "S3 overlay proxy for transparent remote object caching"
 license = "MIT"
 requires-python = ">=3.13"
