@@ -1,5 +1,9 @@
 # S3 Overlay Proxy
 
+[![CD](https://github.com/elohmeier/s3-overlay/actions/workflows/cd.yaml/badge.svg)](https://github.com/elohmeier/s3-overlay/actions/workflows/cd.yaml)
+[![PyPI](https://img.shields.io/pypi/v/s3-overlay)](https://pypi.org/project/s3-overlay/)
+[![GHCR](https://img.shields.io/badge/ghcr.io-s3--overlay-blue)](https://ghcr.io/elohmeier/s3-overlay)
+
 The S3 overlay proxy is a standalone package that provides transparent caching of S3 objects from a remote bucket into a local MinIO instance. Built with Litestar, it sits in front of the local MinIO process and mirrors objects on demand from a remote S3 bucket.
 
 All local reads and writes still target MinIO; a cache miss transparently downloads the object from the upstream bucket, stores it in MinIO, and returns the payload to the caller.
