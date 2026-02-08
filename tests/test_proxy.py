@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import AsyncGenerator
+from unittest.mock import MagicMock
 
 import pytest
+from botocore.exceptions import ClientError
 from s3_overlay import LocalSettings, RemoteSettings, S3OverlayProxy
 from s3_overlay.proxy import load_local_settings_from_env, load_remote_settings_from_env
 
@@ -280,3 +283,85 @@ class TestS3OverlayProxy:
 
         # Cleanup
         local_s3_client.delete_bucket(Bucket=bucket_name)
+
+
+class TestRemoteErrorHandling:
+    """Test that non-404 remote errors are handled gracefully."""
+
+    @pytest.mark.anyio
+    async def test_handle_read_miss_remote_403_returns_false(self, overlay_env, caplog):
+        """A remote 403 on HeadObject should log a warning and return False."""
+        proxy = S3OverlayProxy.from_env()
+        await proxy.startup()
+        try:
+            # Build a 404 ClientError for the initial local miss
+            local_error = ClientError(
+                {
+                    "Error": {"Code": "404", "Message": "Not Found"},
+                    "ResponseMetadata": {"HTTPStatusCode": 404},
+                },
+                "HeadObject",
+            )
+
+            # Build a 403 ClientError for the remote head_object call
+            remote_403 = ClientError(
+                {
+                    "Error": {"Code": "403", "Message": "Forbidden"},
+                    "ResponseMetadata": {"HTTPStatusCode": 403},
+                },
+                "HeadObject",
+            )
+
+            # Mock the remote client's head_object to raise 403
+            mock_remote = MagicMock()
+            mock_remote.head_object.side_effect = remote_403
+            proxy._remote_client = mock_remote
+
+            request = MagicMock()
+            request.method = "GET"
+            request.headers = {}
+
+            with caplog.at_level(logging.WARNING, logger="s3_overlay.proxy"):
+                result = await proxy._handle_read_miss(
+                    local_error, request, "/mybucket/mykey.pdf", "mybucket", "mykey.pdf"
+                )
+
+            assert result is False
+            assert any("remote error" in r.message for r in caplog.records)
+            assert any(
+                "403" in r.message or "Forbidden" in r.message for r in caplog.records
+            )
+        finally:
+            await proxy.shutdown()
+
+    @pytest.mark.anyio
+    async def test_backfill_remote_403_returns_false(self, overlay_env, caplog):
+        """A remote 403 on get_object during backfill should log and return False."""
+        proxy = S3OverlayProxy.from_env()
+        await proxy.startup()
+        try:
+            remote_403 = ClientError(
+                {
+                    "Error": {"Code": "403", "Message": "Forbidden"},
+                    "ResponseMetadata": {"HTTPStatusCode": 403},
+                },
+                "GetObject",
+            )
+
+            mock_remote = MagicMock()
+            mock_remote.get_object.side_effect = remote_403
+            proxy._remote_client = mock_remote
+
+            request = MagicMock()
+            request.method = "GET"
+            request.headers = {}
+
+            with caplog.at_level(logging.WARNING, logger="s3_overlay.proxy"):
+                result = await proxy._backfill_from_remote(
+                    request, "/mybucket/mykey.pdf"
+                )
+
+            assert result is False
+            assert any("remote backfill failed" in r.message for r in caplog.records)
+        finally:
+            await proxy.shutdown()

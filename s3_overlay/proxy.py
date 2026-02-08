@@ -402,7 +402,6 @@ class S3OverlayProxy:
                 partial(self._remote_client.head_object, Bucket=remote_bucket, Key=key)
             )
         except ClientError as e:
-            # Check if it is a 404
             err_code = e.response.get("Error", {}).get("Code")
             if err_code in {"404", "NoSuchKey", "NotFound"}:
                 LOG.debug(
@@ -412,7 +411,14 @@ class S3OverlayProxy:
                     remote_bucket,
                 )
                 return False
-            raise
+            LOG.warning(
+                "remote error for s3://%s/%s (remote bucket: %s): %s",
+                bucket,
+                key,
+                remote_bucket,
+                e,
+            )
+            return False
 
         size = remote_head.get("ContentLength", 0)
 
@@ -488,7 +494,18 @@ class S3OverlayProxy:
         """Map a local bucket name to its remote equivalent."""
         if not self._remote_settings.bucket_mapping:
             return local_bucket
-        return self._remote_settings.bucket_mapping.get(local_bucket, local_bucket)
+        mapped = self._remote_settings.bucket_mapping.get(local_bucket)
+        if mapped is None:
+            LOG.debug(
+                "no remote mapping for local bucket %r, using as-is "
+                "(configured mappings: %s)",
+                local_bucket,
+                ", ".join(
+                    f"{k}->{v}" for k, v in self._remote_settings.bucket_mapping.items()
+                ),
+            )
+            return local_bucket
+        return mapped
 
     async def _backfill_from_remote(self, request: Request, path: str) -> bool:
         if not self._remote_client:
@@ -514,7 +531,14 @@ class S3OverlayProxy:
                     remote_bucket,
                 )
                 return False
-            raise
+            LOG.warning(
+                "remote backfill failed for s3://%s/%s (remote bucket: %s): %s",
+                bucket,
+                key,
+                remote_bucket,
+                error,
+            )
+            return False
 
         body = await _run_sync(remote_obj["Body"].read)
         await _run_sync(remote_obj["Body"].close)
