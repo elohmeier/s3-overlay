@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.1.0 (2026-02-14)
+
+### Chores
+
+- Update README
+  ([`c7aac8f`](https://github.com/elohmeier/s3-overlay/commit/c7aac8f784e908abf1b485e28233c346f21784f1))
+
+### Features
+
+- Make local caching opt-in and handle storage-full errors gracefully
+  ([`bd2c104`](https://github.com/elohmeier/s3-overlay/commit/bd2c10460ce0f695e6434bda93dc9afb42f09fcf))
+
+
 ## v1.0.4 (2026-02-08)
 
 ### Bug Fixes
