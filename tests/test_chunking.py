@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import os
 from collections.abc import AsyncGenerator, AsyncIterator, Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from litestar import Request
@@ -62,8 +62,10 @@ class TestChunking:
         content = b"x" * 5000  # 5KB file, > 1KB threshold
 
         # Upload to remote
+        remote_client = cast(Any, remote_s3_client)
+        local_client = cast(Any, local_s3_client)
         s3_helpers["ensure_bucket"](remote_s3_client, remote_bucket)
-        remote_s3_client.put_object(
+        remote_client.put_object(
             Bucket=remote_bucket,
             Key=key,
             Body=content,
@@ -115,7 +117,7 @@ class TestChunking:
             # It shouldn't have the object
             # (In standard MinIO, ListObjects might not show it, checking stat_object)
             try:
-                local_s3_client.head_object(Bucket=bucket, Key=key)
+                local_client.head_object(Bucket=bucket, Key=key)
                 exists = True
             except Exception:
                 exists = False
@@ -131,14 +133,14 @@ class TestChunking:
         chunk_key = f"v1/{bucket}/{key}/512/0"
 
         try:
-            stat = local_s3_client.head_object(Bucket=cache_bucket, Key=chunk_key)
+            stat = local_client.head_object(Bucket=cache_bucket, Key=chunk_key)
             assert stat["ContentLength"] == 512
         except Exception as e:
             pytest.fail(f"Chunk 0 not found in cache bucket: {e}")
 
         # Cleanup
         with contextlib.suppress(Exception):
-            local_s3_client.delete_object(Bucket=cache_bucket, Key=chunk_key)
-            local_s3_client.delete_bucket(Bucket=cache_bucket)
-            remote_s3_client.delete_object(Bucket=remote_bucket, Key=key)
-            remote_s3_client.delete_bucket(Bucket=remote_bucket)
+            local_client.delete_object(Bucket=cache_bucket, Key=chunk_key)
+            local_client.delete_bucket(Bucket=cache_bucket)
+            remote_client.delete_object(Bucket=remote_bucket, Key=key)
+            remote_client.delete_bucket(Bucket=remote_bucket)

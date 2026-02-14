@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncGenerator
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -296,19 +297,25 @@ class TestRemoteErrorHandling:
         try:
             # Build a 404 ClientError for the initial local miss
             local_error = ClientError(
-                {
-                    "Error": {"Code": "404", "Message": "Not Found"},
-                    "ResponseMetadata": {"HTTPStatusCode": 404},
-                },
+                cast(
+                    Any,
+                    {
+                        "Error": {"Code": "404", "Message": "Not Found"},
+                        "ResponseMetadata": {"HTTPStatusCode": 404},
+                    },
+                ),
                 "HeadObject",
             )
 
             # Build a 403 ClientError for the remote head_object call
             remote_403 = ClientError(
-                {
-                    "Error": {"Code": "403", "Message": "Forbidden"},
-                    "ResponseMetadata": {"HTTPStatusCode": 403},
-                },
+                cast(
+                    Any,
+                    {
+                        "Error": {"Code": "403", "Message": "Forbidden"},
+                        "ResponseMetadata": {"HTTPStatusCode": 403},
+                    },
+                ),
                 "HeadObject",
             )
 
@@ -341,10 +348,13 @@ class TestRemoteErrorHandling:
         await proxy.startup()
         try:
             remote_403 = ClientError(
-                {
-                    "Error": {"Code": "403", "Message": "Forbidden"},
-                    "ResponseMetadata": {"HTTPStatusCode": 403},
-                },
+                cast(
+                    Any,
+                    {
+                        "Error": {"Code": "403", "Message": "Forbidden"},
+                        "ResponseMetadata": {"HTTPStatusCode": 403},
+                    },
+                ),
                 "GetObject",
             )
 

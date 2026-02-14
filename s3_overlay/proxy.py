@@ -701,9 +701,7 @@ class S3OverlayProxy:
             get_kwargs: dict[str, Any] = {"Bucket": remote_bucket, "Key": key}
             request_range = f"bytes={start}-{end}"
             get_kwargs["Range"] = request_range
-            result = await _run_sync(
-                partial(remote_client.get_object, **get_kwargs)
-            )
+            result = await _run_sync(partial(remote_client.get_object, **get_kwargs))
             stream = result["Body"]
             try:
                 while True:
