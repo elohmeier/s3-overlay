@@ -4,10 +4,10 @@ import logging
 from datetime import UTC, datetime
 from email.utils import format_datetime
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
-from anyio import to_thread
 import httpx
+from anyio import to_thread
 from boto3.session import Session
 from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
@@ -25,7 +25,7 @@ else:  # pragma: no cover
 LOG = logging.getLogger("s3_overlay.proxy")
 
 
-async def _run_sync(func: "Callable[..., Any]", /, *args: Any, **kwargs: Any) -> Any:
+async def _run_sync(func: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
     return await to_thread.run_sync(func, *args, **kwargs)
 
 
@@ -78,6 +78,10 @@ class LocalSettings(BaseSettings):
         default="s3-overlay-cache",
         validation_alias="S3_OVERLAY_CACHE_BUCKET",
     )
+    cache_enabled: bool = Field(
+        default=False,
+        validation_alias="S3_OVERLAY_CACHE_ENABLED",
+    )
 
 
 class RemoteSettings(BaseSettings):
@@ -123,7 +127,7 @@ class RemoteSettings(BaseSettings):
         default=None,
         validation_alias="S3_OVERLAY_BUCKET_MAPPING",
     )
-    addressing_style: str = Field(
+    addressing_style: Literal["auto", "virtual", "path"] = Field(
         default="virtual",
         validation_alias="S3_OVERLAY_REMOTE_ADDRESSING_STYLE",
     )
@@ -184,9 +188,10 @@ class S3OverlayProxy:
             trust_env=False,
         )
         LOG.info(
-            "S3 overlay ready (local=%s, remote=%s)",
+            "S3 overlay ready (local=%s, remote=%s, cache=%s)",
             self._local_settings.endpoint,
             self._describe_remote(),
+            "enabled" if self._local_settings.cache_enabled else "disabled",
         )
 
     async def shutdown(self) -> None:
@@ -421,6 +426,19 @@ class S3OverlayProxy:
             return False
 
         size = remote_head.get("ContentLength", 0)
+        range_header = request.headers.get("range")
+
+        # When caching is disabled, always stream directly from remote
+        if not self._local_settings.cache_enabled:
+            LOG.debug(
+                "caching disabled, streaming from remote s3://%s/%s (size=%d)",
+                bucket,
+                key,
+                size,
+            )
+            return self._stream_from_remote(
+                key, size, range_header, remote_bucket, remote_head
+            )
 
         # If file is large, use chunked caching
         if size > self._local_settings.chunk_threshold:
@@ -435,7 +453,7 @@ class S3OverlayProxy:
                 bucket,
                 key,
                 size,
-                request.headers.get("range"),
+                range_header,
                 remote_bucket,
                 remote_head,
             )
@@ -565,7 +583,16 @@ class S3OverlayProxy:
         if remote_obj.get("Expires"):
             put_kwargs["Expires"] = remote_obj["Expires"]
 
-        await _run_sync(partial(self._local_client.put_object, **put_kwargs))
+        try:
+            await _run_sync(partial(self._local_client.put_object, **put_kwargs))
+        except ClientError:
+            LOG.warning(
+                "failed to cache remote object s3://%s/%s (non-fatal)",
+                bucket,
+                key,
+                exc_info=True,
+            )
+            return False
         LOG.info(
             "cached remote object s3://%s/%s (%s bytes)%s (from remote: %s)",
             bucket,
@@ -656,6 +683,50 @@ class S3OverlayProxy:
             remote=load_remote_settings_from_env(),
         )
 
+    def _stream_from_remote(
+        self,
+        key: str,
+        total_size: int,
+        range_header: str | None,
+        remote_bucket: str,
+        remote_head: dict[str, Any],
+    ) -> Response:
+        """Stream an object directly from remote without caching locally."""
+        assert self._remote_client is not None
+        remote_client = self._remote_client
+        start, end = self._parse_range(range_header, total_size)
+        content_length = end - start + 1
+
+        async def iterator() -> AsyncIterator[bytes]:
+            get_kwargs: dict[str, Any] = {"Bucket": remote_bucket, "Key": key}
+            request_range = f"bytes={start}-{end}"
+            get_kwargs["Range"] = request_range
+            result = await _run_sync(
+                partial(remote_client.get_object, **get_kwargs)
+            )
+            stream = result["Body"]
+            try:
+                while True:
+                    chunk = await _run_sync(stream.read, 1024 * 64)
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:
+                await _run_sync(stream.close)
+
+        headers = self._object_headers(remote_head)
+        if range_header:
+            headers.update(
+                {
+                    "Content-Length": str(content_length),
+                    "Content-Range": f"bytes {start}-{end}/{total_size}",
+                }
+            )
+            return Stream(content=iterator, status_code=206, headers=headers)
+
+        headers["Content-Length"] = str(total_size)
+        return Stream(content=iterator, status_code=200, headers=headers)
+
     async def _serve_chunked(
         self,
         bucket: str,
@@ -677,9 +748,20 @@ class S3OverlayProxy:
             while current_pos <= end:
                 chunk_index = current_pos // chunk_size
                 chunk_start_in_file = chunk_index * chunk_size
+                offset_in_chunk = current_pos - chunk_start_in_file
 
-                # Ensure chunk is available
-                await self._ensure_chunk(
+                bytes_left_in_request = end - current_pos + 1
+                bytes_left_in_chunk = chunk_size - offset_in_chunk
+
+                # Last chunk might be smaller than chunk_size
+                if chunk_start_in_file + chunk_size > total_size:
+                    bytes_left_in_chunk = (
+                        total_size - chunk_start_in_file - offset_in_chunk
+                    )
+
+                bytes_to_read = min(bytes_left_in_request, bytes_left_in_chunk)
+
+                chunk_bytes = await self._fetch_chunk(
                     bucket,
                     key,
                     chunk_index,
@@ -687,44 +769,10 @@ class S3OverlayProxy:
                     total_size,
                     remote_bucket,
                     cache_bucket,
+                    offset_in_chunk,
+                    bytes_to_read,
                 )
-
-                # Read from chunk
-                chunk_key = f"v1/{bucket}/{key}/{chunk_size}/{chunk_index}"
-                offset_in_chunk = current_pos - chunk_start_in_file
-
-                # Calculate how much to read from this chunk
-                # We need up to the end of the request or end of the chunk
-                bytes_left_in_request = end - current_pos + 1
-                bytes_left_in_chunk = chunk_size - offset_in_chunk
-
-                # Handling the last chunk which might be smaller than chunk_size
-                if chunk_index * chunk_size + chunk_size > total_size:
-                    bytes_left_in_chunk = (
-                        total_size - chunk_start_in_file - offset_in_chunk
-                    )
-
-                bytes_to_read = min(bytes_left_in_request, bytes_left_in_chunk)
-
-                chunk_range = (
-                    f"bytes={offset_in_chunk}-{offset_in_chunk + bytes_to_read - 1}"
-                )
-
-                obj = await _run_sync(
-                    partial(
-                        self._local_client.get_object,
-                        Bucket=cache_bucket,
-                        Key=chunk_key,
-                        Range=chunk_range,
-                    )
-                )
-                stream = obj["Body"]
-                try:
-                    chunk_bytes = await _run_sync(stream.read)
-                    yield chunk_bytes
-                finally:
-                    await _run_sync(stream.close)
-
+                yield chunk_bytes
                 current_pos += bytes_to_read
 
         headers = self._object_headers(remote_head)
@@ -740,7 +788,7 @@ class S3OverlayProxy:
         status_code = 206
         return Stream(content=iterator, status_code=status_code, headers=headers)
 
-    async def _ensure_chunk(
+    async def _fetch_chunk(
         self,
         bucket: str,
         key: str,
@@ -749,26 +797,40 @@ class S3OverlayProxy:
         total_size: int,
         remote_bucket: str,
         cache_bucket: str,
-    ) -> None:
+        offset_in_chunk: int,
+        bytes_to_read: int,
+    ) -> bytes:
+        """Return chunk data, using cache when available, falling back to remote.
+
+        The local cache write is best-effort: if it fails (e.g. storage full),
+        the data is still served from the remote download.
+        """
         assert self._remote_client is not None
         chunk_key = f"v1/{bucket}/{key}/{chunk_size}/{index}"
+        chunk_range = f"bytes={offset_in_chunk}-{offset_in_chunk + bytes_to_read - 1}"
 
-        # Check if exists
+        # 1. Try reading from cache
         try:
-            await _run_sync(
+            obj = await _run_sync(
                 partial(
-                    self._local_client.head_object, Bucket=cache_bucket, Key=chunk_key
+                    self._local_client.get_object,
+                    Bucket=cache_bucket,
+                    Key=chunk_key,
+                    Range=chunk_range,
                 )
             )
+            stream = obj["Body"]
+            try:
+                return await _run_sync(stream.read)
+            finally:
+                await _run_sync(stream.close)
         except ClientError:
-            pass
-        else:
-            return
+            pass  # Cache miss — download from remote
 
-        # Download from remote
+        # 2. Download full chunk from remote
         start = index * chunk_size
         end = min(start + chunk_size, total_size) - 1
-        range_header = f"bytes={start}-{end}"
+        remote_range = f"bytes={start}-{end}"
 
         try:
             remote_obj = await _run_sync(
@@ -776,7 +838,7 @@ class S3OverlayProxy:
                     self._remote_client.get_object,
                     Bucket=remote_bucket,
                     Key=key,
-                    Range=range_header,
+                    Range=remote_range,
                 )
             )
         except ClientError:
@@ -786,16 +848,26 @@ class S3OverlayProxy:
         body = await _run_sync(remote_obj["Body"].read)
         await _run_sync(remote_obj["Body"].close)
 
-        # Upload to cache
-        await _run_sync(
-            partial(
-                self._local_client.put_object,
-                Bucket=cache_bucket,
-                Key=chunk_key,
-                Body=body,
+        # 3. Best-effort cache write — never fail the request
+        try:
+            await _run_sync(
+                partial(
+                    self._local_client.put_object,
+                    Bucket=cache_bucket,
+                    Key=chunk_key,
+                    Body=body,
+                )
             )
-        )
-        LOG.debug("cached chunk %s (%d bytes)", chunk_key, len(body))
+            LOG.debug("cached chunk %s (%d bytes)", chunk_key, len(body))
+        except ClientError:
+            LOG.warning(
+                "failed to cache chunk %s (non-fatal, serving from remote)",
+                chunk_key,
+                exc_info=True,
+            )
+
+        # 4. Slice to the requested range within the chunk
+        return body[offset_in_chunk : offset_in_chunk + bytes_to_read]
 
     def _parse_range(
         self, range_header: str | None, total_size: int

@@ -45,12 +45,12 @@ def minio_secure() -> bool:
 
 @pytest.fixture(scope="session")
 def minio_service(
-    docker_service: "DockerService",
+    docker_service: DockerService,
     minio_access_key: str,
     minio_secret_key: str,
     minio_secure: bool,
     minio_service_name: str,
-) -> "Generator[MinioService, None, None]":
+) -> Generator[MinioService]:
     from urllib.error import URLError
     from urllib.request import Request, urlopen
 
@@ -63,7 +63,7 @@ def minio_service(
             msg = "URL must start with 'http:' or 'https:'"
             raise ValueError(msg)
         try:
-            with urlopen(url=Request(url, method="GET"), timeout=10) as response:  # noqa: S310
+            with urlopen(url=Request(url, method="GET"), timeout=10) as response:
                 return response.status == 200
         except (URLError, ConnectionError):
             return False
@@ -113,12 +113,13 @@ def _bucket_exists(client, bucket: str) -> bool:
 
     try:
         client.head_bucket(Bucket=bucket)
-        return True
     except ClientError as exc:
         code = exc.response.get("Error", {}).get("Code", "")
         if code in {"404", "NoSuchBucket", "NotFound"}:
             return False
         raise
+    else:
+        return True
 
 
 def _ensure_bucket(client, bucket: str) -> None:
@@ -139,13 +140,13 @@ def minio_service_port() -> int:
 
 
 @pytest.fixture
-def local_s3_client(minio_service: MinioService) -> "BaseClient":
+def local_s3_client(minio_service: MinioService) -> BaseClient:
     """Create a boto3 S3 client for the local MinIO service."""
     return _s3_client_from_service(minio_service)
 
 
 @pytest.fixture
-def remote_s3_client(minio_service: MinioService) -> "BaseClient":
+def remote_s3_client(minio_service: MinioService) -> BaseClient:
     """Create a boto3 S3 client that simulates a remote service.
 
     For simplicity in testing, we use the same MinIO instance but with
@@ -224,9 +225,16 @@ def remote_env_vars(
 def overlay_env(
     local_env_vars: dict[str, str],
     remote_env_vars: dict[str, str],
-) -> dict[str, str]:
+) -> Generator[dict[str, str]]:
     """Combined environment variables for overlay proxy testing."""
-    return {**local_env_vars, **remote_env_vars}
+    key = "S3_OVERLAY_CACHE_ENABLED"
+    original = os.environ.get(key)
+    os.environ[key] = "true"
+    yield {**local_env_vars, **remote_env_vars, key: "true"}
+    if original is None:
+        os.environ.pop(key, None)
+    else:
+        os.environ[key] = original
 
 
 @pytest.fixture

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 from unittest.mock import MagicMock
 
 import pytest
@@ -121,7 +121,7 @@ class TestS3OverlayProxy:
     """Test S3OverlayProxy functionality."""
 
     @pytest.fixture
-    async def proxy(self, overlay_env) -> AsyncGenerator[S3OverlayProxy, None]:
+    async def proxy(self, overlay_env) -> AsyncGenerator[S3OverlayProxy]:
         """Create and initialize a proxy instance."""
         proxy = S3OverlayProxy.from_env()
         await proxy.startup()

@@ -63,7 +63,8 @@ uv run litestar --app s3_overlay.app:create_app run --host 0.0.0.0
 
 - **Writes** (`PUT`, multipart uploads, deletes) are handled only by MinIO
 - **Reads** (`GET`, `HEAD`) hit MinIO first and fall back to the remote source if the object is missing locally
-- Objects fetched from the remote source are written straight into MinIO, so subsequent requests stay local
+- When caching is enabled (`S3_OVERLAY_CACHE_ENABLED=true`), objects fetched from the remote source are written into MinIO so subsequent requests stay local
+- When caching is disabled (default), objects are streamed directly from the remote source without storing them locally
 
 ## Configuration
 
@@ -71,16 +72,17 @@ Configure the proxy using environment variables:
 
 ### Local MinIO (Required)
 
-| Variable                             | Description                        | Default                 |
-| ------------------------------------ | ---------------------------------- | ----------------------- |
-| `S3_OVERLAY_LOCAL_ENDPOINT`          | Local MinIO endpoint URL           | `http://127.0.0.1:9000` |
-| `S3_OVERLAY_LOCAL_ACCESS_KEY`        | Local MinIO access key             | `minioadmin`            |
-| `S3_OVERLAY_LOCAL_SECRET_KEY`        | Local MinIO secret key             | `minioadmin`            |
-| `S3_OVERLAY_LOCAL_REGION`            | AWS region for local MinIO         | `us-east-1`             |
-| `S3_OVERLAY_DEFAULT_BUCKET_LOCATION` | Default bucket location constraint | `us-east-1`             |
-| `S3_OVERLAY_CHUNK_THRESHOLD`         | File size threshold for chunking   | `52428800` (50MB)       |
-| `S3_OVERLAY_CHUNK_SIZE`              | Chunk size for partial caching     | `16777216` (16MB)       |
-| `S3_OVERLAY_CACHE_BUCKET`            | Bucket name for storing chunks     | `s3-overlay-cache`      |
+| Variable                             | Description                            | Default                 |
+| ------------------------------------ | -------------------------------------- | ----------------------- |
+| `S3_OVERLAY_LOCAL_ENDPOINT`          | Local MinIO endpoint URL               | `http://127.0.0.1:9000` |
+| `S3_OVERLAY_LOCAL_ACCESS_KEY`        | Local MinIO access key                 | `minioadmin`            |
+| `S3_OVERLAY_LOCAL_SECRET_KEY`        | Local MinIO secret key                 | `minioadmin`            |
+| `S3_OVERLAY_LOCAL_REGION`            | AWS region for local MinIO             | `us-east-1`             |
+| `S3_OVERLAY_DEFAULT_BUCKET_LOCATION` | Default bucket location constraint     | `us-east-1`             |
+| `S3_OVERLAY_CHUNK_THRESHOLD`         | File size threshold for chunking       | `52428800` (50MB)       |
+| `S3_OVERLAY_CHUNK_SIZE`              | Chunk size for partial caching         | `16777216` (16MB)       |
+| `S3_OVERLAY_CACHE_BUCKET`            | Bucket name for storing chunks         | `s3-overlay-cache`      |
+| `S3_OVERLAY_CACHE_ENABLED`           | Enable local caching of remote objects | `false`                 |
 
 ### Remote S3 (Optional)
 
