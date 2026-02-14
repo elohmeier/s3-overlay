@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import contextlib
 import os
-from typing import TYPE_CHECKING, AsyncGenerator, AsyncIterator, Callable, cast
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from litestar import Request
@@ -28,7 +29,7 @@ def chunking_env(overlay_env) -> dict[str, str]:
 
 
 @pytest.fixture
-async def chunking_proxy(chunking_env) -> AsyncGenerator[S3OverlayProxy, None]:
+async def chunking_proxy(chunking_env) -> AsyncGenerator[S3OverlayProxy]:
     """Create proxy with chunking configuration."""
     # Apply env vars for this test
     original_environ = os.environ.copy()
@@ -50,8 +51,8 @@ class TestChunking:
     async def test_large_file_uses_chunking(
         self,
         chunking_proxy: S3OverlayProxy,
-        local_s3_client: "BaseClient",
-        remote_s3_client: "BaseClient",
+        local_s3_client: BaseClient,
+        remote_s3_client: BaseClient,
         s3_helpers,
     ):
         """Test that a file larger than threshold is cached in chunks."""

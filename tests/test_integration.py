@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import contextlib
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from email.utils import parsedate_to_datetime
-from typing import AsyncGenerator, AsyncIterator, Callable, cast
+from typing import cast
 
 import pytest
 from litestar import Request
@@ -19,7 +20,7 @@ def simple_text_content() -> bytes:
 
 
 @pytest.fixture
-async def proxy(overlay_env) -> AsyncGenerator[S3OverlayProxy, None]:
+async def proxy(overlay_env) -> AsyncGenerator[S3OverlayProxy]:
     """Create and initialize proxy with both local and remote configured."""
     proxy = S3OverlayProxy.from_env()
     await proxy.startup()

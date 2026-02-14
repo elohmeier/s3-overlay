@@ -14,6 +14,10 @@ dependencies = [
   "pydantic-settings>=2.2.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/elohmeier/s3-overlay"
+Repository = "https://github.com/elohmeier/s3-overlay"
+
 [project.optional-dependencies]
 build = ["uv ~= 0.10.0"]
 
