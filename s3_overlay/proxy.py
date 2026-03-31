@@ -610,7 +610,7 @@ class S3OverlayProxy:
             code = error.response.get("Error", {}).get("Code")
             if code not in {"404", "NoSuchBucket", "NotFound"}:
                 raise
-            create_kwargs = {"Bucket": bucket}
+            create_kwargs: dict[str, Any] = {"Bucket": bucket}
             location = self._local_settings.bucket_location
             if location and location != "us-east-1":
                 create_kwargs["CreateBucketConfiguration"] = {
